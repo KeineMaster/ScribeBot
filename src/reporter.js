@@ -11,10 +11,17 @@ const openai = new OpenAI({
 async function getTopicSummary(messages, days) {
   if (messages.length === 0) return null;
 
-  const formatted = messages
+  // Limit to 500 messages max to stay within Groq free tier token limits (~8000 tokens)
+  const sample = messages
     .filter(m => m.content && m.content.trim().length > 0)
-    .map(m => `[#${m.channelName}] ${m.username}: ${m.content}`)
-    .join('\n');
+    .slice(-500);
+
+  if (sample.length === 0) return null;
+
+  const formatted = sample
+    .map(m => `[#${m.channelName}|${m.channelId}] ${m.username}: ${m.content}`)
+    .join('\n')
+    .slice(0, 28000); // ~7000 tokens safety cap
 
   if (!formatted) return null;
 
@@ -23,14 +30,14 @@ async function getTopicSummary(messages, days) {
     messages: [
       {
         role: 'system',
-        content: `Tu es un analyste de discussions Discord. Tu analyses les messages d'un serveur et tu identifies le sujet principal discuté. Tu comprends le français et l'argot en ligne.`,
+        content: `Tu es le Scribe de L'Auberge des Streamers, un serveur Discord. Tu analyses les messages et identifies les sujets qui ont généré le plus d'échanges. Tu comprends le français, l'anglais et l'argot en ligne.`,
       },
       {
         role: 'user',
-        content: `Voici les ${messages.length} derniers messages du serveur sur les ${days} derniers jours.\n\nIdentifie le sujet le plus discuté et fournis un résumé concis. Réponds exactement dans ce format:\n**Sujet :** [Nom court du sujet]\n**Résumé :** [2 à 3 phrases maximum]\n\nMessages :\n${formatted}`,
+        content: `Voici ${sample.length} messages du serveur Discord sur les ${days} derniers jours. Chaque message est au format [#nomChannel|channelId].\n\nIdentifie les 3 sujets CONCRETS et DISTINCTS qui ont généré le plus de messages (évite les thèmes vagues — sois précis : ex: "Le nouveau GPU RTX 5090", "La série Fallout sur Amazon"). Pour chaque sujet, note le channelId où la discussion a eu lieu.\n\nRéponds UNIQUEMENT dans ce format exact, sans intro ni conclusion :\n🔥 **Sujet :** [Sujet précis]\n**Où :** <#[channelId]>\n**Résumé :** [1-2 phrases sur ce qui a été dit/débattu]\n\n🔥 **Sujet :** [Sujet précis]\n**Où :** <#[channelId]>\n**Résumé :** [1-2 phrases sur ce qui a été dit/débattu]\n\n🔥 **Sujet :** [Sujet précis]\n**Où :** <#[channelId]>\n**Résumé :** [1-2 phrases sur ce qui a été dit/débattu]\n\nMessages :\n${formatted}`,
       },
     ],
-    max_tokens: 300,
+    max_tokens: 500,
     temperature: 0.5,
   });
 
@@ -53,11 +60,11 @@ async function sendReport(guild, interaction) {
   const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
 
   const membersText = topMembers
-    .map((m, i) => `${medals[i]} **${m.username}** — ${m.total} messages`)
+    .map((m, i) => `${medals[i]} <@${m.userId}> — ${m.total} messages`)
     .join('\n');
 
   const channelsText = topChannels
-    .map((c, i) => `${medals[i]} **#${c.channelName}** — ${c.total} messages`)
+    .map((c, i) => `${medals[i]} <#${c.channelId}> — ${c.total} messages`)
     .join('\n');
 
   const embed = new EmbedBuilder()
@@ -76,11 +83,16 @@ async function sendReport(guild, interaction) {
     try {
       const topicSummary = await getTopicSummary(messages, days);
       if (topicSummary) {
-        embed.addFields({ name: '🔥 Sujet le plus discuté', value: topicSummary });
+        embed.addFields({ name: '🔥 Le Scribe a identifié 3 sujets chauds !', value: topicSummary });
+      } else {
+        embed.addFields({ name: '🔥 Sujets chauds', value: '*Aucun contenu textuel suffisant pour l\'analyse.*' });
       }
     } catch (err) {
-      console.error("Erreur lors de l'analyse IA :", err.message);
+      console.error("Erreur lors de l'analyse IA :", err.message, err.status, JSON.stringify(err.error ?? err.cause ?? ''));
+      embed.addFields({ name: '🔥 Sujets chauds', value: `*Erreur IA : ${err.message}*` });
     }
+  } else {
+    embed.addFields({ name: '🔥 Sujets chauds', value: '*GROQ_API_KEY manquante dans .env*' });
   }
 
   const reportChannel = await guild.channels.fetch(process.env.REPORT_CHANNEL_ID);
