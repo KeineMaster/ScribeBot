@@ -1,19 +1,22 @@
 const { EmbedBuilder } = require('discord.js');
 const OpenAI = require('openai');
-const { getTopMembers, getTopChannels, getMessagesForAI } = require('./stats');
+const { fetchMessages } = require('./fetcher');
+const { getTopMembers, getTopChannels } = require('./stats');
 
 const openai = new OpenAI({
   apiKey: process.env.GROQ_API_KEY,
   baseURL: 'https://api.groq.com/openai/v1',
 });
 
-async function getTopicSummary(days) {
-  const messages = getMessagesForAI(days);
+async function getTopicSummary(messages, days) {
   if (messages.length === 0) return null;
 
   const formatted = messages
-    .map(m => `[#${m.channel_name}] ${m.username}: ${m.content}`)
+    .filter(m => m.content && m.content.trim().length > 0)
+    .map(m => `[#${m.channelName}] ${m.username}: ${m.content}`)
     .join('\n');
+
+  if (!formatted) return null;
 
   const completion = await openai.chat.completions.create({
     model: 'llama-3.3-70b-versatile',
@@ -34,12 +37,18 @@ async function getTopicSummary(days) {
   return completion.choices[0]?.message?.content ?? null;
 }
 
-async function sendReport(client) {
-  const channel = await client.channels.fetch(process.env.REPORT_CHANNEL_ID);
+async function sendReport(guild, interaction) {
   const days = parseInt(process.env.REPORT_INTERVAL_DAYS || '7', 10);
 
-  const topMembers = getTopMembers(days);
-  const topChannels = getTopChannels(days);
+  // Fetch messages with progress updates
+  const messages = await fetchMessages(guild, days, async (percent, current, total) => {
+    await interaction.editReply(`📡 Récupération des messages... ${percent}% (${current}/${total} channels)`);
+  });
+
+  await interaction.editReply(`📊 Analyse IA en cours... (${messages.length} messages récupérés)`);
+
+  const topMembers = getTopMembers(messages);
+  const topChannels = getTopChannels(messages);
 
   const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
 
@@ -48,7 +57,7 @@ async function sendReport(client) {
     .join('\n');
 
   const channelsText = topChannels
-    .map((c, i) => `${medals[i]} **#${c.channel_name}** — ${c.total} messages`)
+    .map((c, i) => `${medals[i]} **#${c.channelName}** — ${c.total} messages`)
     .join('\n');
 
   const embed = new EmbedBuilder()
@@ -65,16 +74,19 @@ async function sendReport(client) {
   // Analyse IA du sujet le plus discuté
   if (process.env.GROQ_API_KEY) {
     try {
-      const topicSummary = await getTopicSummary(days);
+      const topicSummary = await getTopicSummary(messages, days);
       if (topicSummary) {
         embed.addFields({ name: '🔥 Sujet le plus discuté', value: topicSummary });
       }
     } catch (err) {
-      console.error('Erreur lors de l\'analyse IA :', err.message);
+      console.error("Erreur lors de l'analyse IA :", err.message);
     }
   }
 
-  channel.send({ embeds: [embed] });
+  const reportChannel = await guild.channels.fetch(process.env.REPORT_CHANNEL_ID);
+  await reportChannel.send({ embeds: [embed] });
+
+  await interaction.editReply('📜 Rapport envoyé !');
 }
 
 module.exports = { sendReport };

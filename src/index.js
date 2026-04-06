@@ -1,7 +1,5 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, ActivityType } = require('discord.js');
-const cron = require('node-cron');
-const tracker = require('./tracker');
 const reporter = require('./reporter');
 
 const client = new Client({
@@ -24,37 +22,27 @@ client.once('ready', async () => {
     await guild.commands.set([
       {
         name: 'scribe',
-        description: "Déclenche le rapport de l'auberge immédiatement",
+        description: "Génère le rapport des 7 derniers jours",
       },
     ]);
     console.log('✅ Commande /scribe enregistrée');
   } else {
-    console.error(`❌ Serveur introuvable. Vérifie GUILD_ID dans .env`);
+    console.error('❌ Serveur introuvable. Vérifie GUILD_ID dans .env');
   }
-
-  // Rapport automatique chaque lundi à 9h
-  cron.schedule('0 9 * * 1', () => {
-    reporter.sendReport(client);
-  });
 });
 
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
-  if (interaction.commandName === 'scribe') {
-    await interaction.deferReply();
-    try {
-      await reporter.sendReport(client);
-      await interaction.editReply('📜 Rapport envoyé !');
-    } catch (err) {
-      console.error(err);
-      await interaction.editReply('❌ Erreur lors de la génération du rapport.');
-    }
-  }
-});
+  if (interaction.commandName !== 'scribe') return;
 
-client.on('messageCreate', (message) => {
-  if (message.author.bot) return;
-  tracker.trackMessage(message);
+  await interaction.deferReply();
+  try {
+    const guild = client.guilds.cache.get(process.env.GUILD_ID);
+    await reporter.sendReport(guild, interaction);
+  } catch (err) {
+    console.error(err);
+    await interaction.editReply('❌ Erreur lors de la génération du rapport.');
+  }
 });
 
 client.login(process.env.DISCORD_TOKEN).catch(err => {
