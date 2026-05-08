@@ -9,8 +9,9 @@ async function fetchMessages(guild, days, onProgress) {
   const since = Date.now() - days * 24 * 60 * 60 * 1000;
   const excluded = getExcludedChannels();
 
+  await guild.channels.fetch(); // S'assure que tous les channels sont en cache
   const channels = guild.channels.cache
-    .filter(c => c.isTextBased() && !c.isVoiceBased() && !excluded.includes(c.id))
+    .filter(c => c.isTextBased() && !c.isVoiceBased() && !excluded.includes(c.id) && !excluded.includes(c.parentId))
     .toJSON();
 
   const messages = [];
@@ -49,6 +50,12 @@ async function fetchMessages(guild, days, onProgress) {
               channelId: channel.id,
               channelName: channel.name,
               content: msg.content,
+              reactions: msg.reactions.cache.map(r => ({
+                emoji: r.emoji.id
+                  ? `<${r.emoji.animated ? 'a' : ''}:${r.emoji.name}:${r.emoji.id}>`
+                  : r.emoji.name,
+                count: r.count,
+              })),
             });
           }
         }

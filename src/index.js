@@ -41,7 +41,7 @@ client.on('interactionCreate', async (interaction) => {
     await reporter.sendReport(guild, interaction);
   } catch (err) {
     console.error(err);
-    await interaction.editReply('❌ Erreur lors de la génération du rapport.');
+    await interaction.editReply('❌ Le Scribe a planté. Réessaye dans quelques instants.');
   }
 });
 
