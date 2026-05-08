@@ -20,4 +20,32 @@ function getTopChannels(messages) {
     .slice(0, 5);
 }
 
-module.exports = { getTopMembers, getTopChannels };
+function getTopEmojis(messages) {
+  const counts = {};
+
+  for (const msg of messages) {
+    // Emojis custom Discord dans le contenu : <:name:id> ou <a:name:id>
+    const customMatches = (msg.content || '').match(/<a?:\w+:\d+>/g) || [];
+    for (const emoji of customMatches) {
+      counts[emoji] = (counts[emoji] || 0) + 1;
+    }
+
+    // Emojis Unicode dans le contenu
+    const unicodeMatches = (msg.content || '').match(/\p{Extended_Pictographic}/gu) || [];
+    for (const emoji of unicodeMatches) {
+      counts[emoji] = (counts[emoji] || 0) + 1;
+    }
+
+    // Réactions
+    for (const reaction of (msg.reactions || [])) {
+      counts[reaction.emoji] = (counts[reaction.emoji] || 0) + reaction.count;
+    }
+  }
+
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([emoji, total]) => ({ emoji, total }));
+}
+
+module.exports = { getTopMembers, getTopChannels, getTopEmojis };

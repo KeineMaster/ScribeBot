@@ -1,7 +1,6 @@
-const { EmbedBuilder } = require('discord.js');
 const OpenAI = require('openai');
 const { fetchMessages } = require('./fetcher');
-const { getTopMembers, getTopChannels } = require('./stats');
+const { getTopMembers, getTopChannels, getTopEmojis } = require('./stats');
 
 const openai = new OpenAI({
   apiKey: process.env.GROQ_API_KEY,
@@ -30,7 +29,7 @@ async function getTopicSummary(messages, days) {
     messages: [
       {
         role: 'system',
-        content: `Tu es le Scribe de L'Auberge des Streamers, un serveur Discord. Tu analyses les messages et identifies les sujets qui ont généré le plus d'échanges. Tu comprends le français, l'anglais et l'argot en ligne.`,
+        content: `Tu es le Scribe de L'Auberge des Streamers, un serveur Discord québécois. Tu analyses les messages et identifies les sujets qui ont généré le plus d'échanges. Tu réponds en français québécois. Tu comprends le joual, l'argot québécois et l'argot en ligne.`,
       },
       {
         role: 'user',
@@ -49,13 +48,14 @@ async function sendReport(guild, interaction) {
 
   // Fetch messages with progress updates
   const messages = await fetchMessages(guild, days, async (percent, current, total) => {
-    await interaction.editReply(`📡 Récupération des messages... ${percent}% (${current}/${total} channels)`);
+    await interaction.editReply(`📡 Récupération des messages... ${percent}% (${current}/${total} salons)`);
   });
 
-  await interaction.editReply(`📊 Analyse IA en cours... (${messages.length} messages récupérés)`);
+  await interaction.editReply(`📊 Analyse en cours par le Scribe... (${messages.length} messages récupérés)`);
 
   const topMembers = getTopMembers(messages);
   const topChannels = getTopChannels(messages);
+  const topEmojis = getTopEmojis(messages);
 
   const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
 
@@ -67,38 +67,44 @@ async function sendReport(guild, interaction) {
     .map((c, i) => `${medals[i]} <#${c.channelId}> — ${c.total} messages`)
     .join('\n');
 
-  const embed = new EmbedBuilder()
-    .setTitle('📜 The Scribe has spoken!')
-    .setDescription(`*Voici les chroniques de l'auberge pour les ${days} derniers jours...*`)
-    .setColor(0x5865F2)
-    .addFields(
-      { name: '🏆 Membres les plus actifs', value: membersText || 'Aucune donnée.' },
-      { name: '💬 Channels les plus actifs', value: channelsText || 'Aucune donnée.' },
-    )
-    .setFooter({ text: "Scribe-Bot • L'Auberge des Streamers" })
-    .setTimestamp();
+  const emojisText = topEmojis.length > 0
+    ? topEmojis.map((e, i) => `${medals[i]} ${e.emoji} — ${e.total} fois`).join('\n')
+    : '*Aucune donnée.*';
 
   // Analyse IA du sujet le plus discuté
+  let topicSection = '';
   if (process.env.GROQ_API_KEY) {
     try {
       const topicSummary = await getTopicSummary(messages, days);
-      if (topicSummary) {
-        embed.addFields({ name: '🔥 Le Scribe a identifié 3 sujets chauds !', value: topicSummary });
-      } else {
-        embed.addFields({ name: '🔥 Sujets chauds', value: '*Aucun contenu textuel suffisant pour l\'analyse.*' });
-      }
+      topicSection = topicSummary
+        ? `\n🔥 **Le Scribe a identifié 3 sujets chauds cette semaine !**\n${topicSummary}`
+        : '\n🔥 *Pas assez de contenu textuel pour faire une analyse.*';
     } catch (err) {
       console.error("Erreur lors de l'analyse IA :", err.message, err.status, JSON.stringify(err.error ?? err.cause ?? ''));
-      embed.addFields({ name: '🔥 Sujets chauds', value: `*Erreur IA : ${err.message}*` });
+      topicSection = `\n🔥 *Erreur IA : ${err.message}*`;
     }
-  } else {
-    embed.addFields({ name: '🔥 Sujets chauds', value: '*GROQ_API_KEY manquante dans .env*' });
   }
 
-  const reportChannel = await guild.channels.fetch(process.env.REPORT_CHANNEL_ID);
-  await reportChannel.send({ embeds: [embed] });
+  const report = [
+    `# ⚠️ ACCÈS ANTICIPÉ — Le Scribe est encore en apprentissage, des changements s'en viennent !`,
+    ``,
+    `📜 **Le Scribe a levé les yeux de ses parchemins...**`,
+    `*Voici les chroniques de l'auberge pour les ${days} derniers jours...*`,
+    ``,
+    `🏆 **Membres les plus actifs**`,
+    membersText || '*Aucune donnée.*',
+    ``,
+    `💬 **Salons les plus actifs**`,
+    channelsText || '*Aucune donnée.*',
+    ``,
+    `😂 **Emojis les plus utilisés**`,
+    emojisText,
+    topicSection,
+  ].join('\n');
 
-  await interaction.editReply('📜 Rapport envoyé !');
+  await interaction.channel.send(report);
+
+  await interaction.editReply('📜 Les chroniques ont été déposées !');
 }
 
 module.exports = { sendReport };
