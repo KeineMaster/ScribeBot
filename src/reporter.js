@@ -86,7 +86,7 @@ async function sendReport(guild, interaction) {
   }
 
   const report = [
-    `📜 **Le Scribe a parlé !**`,
+    `📜 **Le Scribe a levé les yeux de ses parchemins...**`,
     `*Voici les chroniques de l'auberge pour les ${days} derniers jours...*`,
     ``,
     `🏆 **Membres les plus actifs**`,
