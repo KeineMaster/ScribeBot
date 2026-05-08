@@ -86,6 +86,8 @@ async function sendReport(guild, interaction) {
   }
 
   const report = [
+    `# ⚠️ ACCÈS ANTICIPÉ — Le Scribe est encore en apprentissage, des changements s'en viennent !`,
+    ``,
     `📜 **Le Scribe a levé les yeux de ses parchemins...**`,
     `*Voici les chroniques de l'auberge pour les ${days} derniers jours...*`,
     ``,
